@@ -4,11 +4,6 @@ A **desktop-based proofreading tool** built with **Python, Tkinter, and Google G
 
 ---
 
-## Preview  
-![LexiFix Preview](image/LexiFix-GUI.png)  
-
----
-
 ## Overview  
 
 LexiFix is designed to make writing **clearer and error-free** by offering:  
