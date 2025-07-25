@@ -5,6 +5,7 @@ import os
 import threading
 from dotenv import load_dotenv
 from PIL import Image, ImageTk
+import difflib
 import re
 
 load_dotenv()
@@ -13,6 +14,7 @@ class LexiFixSpellChecker:
     def __init__(self, root):
         self.root = root
         self.root.title("LexiFix - AI Spell and Grammar Checker")
+        
         window_width = 1000
         window_height = 770
         screen_width = root.winfo_screenwidth()
@@ -21,14 +23,17 @@ class LexiFixSpellChecker:
         center_y = int(screen_height/2 - window_height/2)
         self.root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
         self.root.configure(bg="#7e57c2")
+        
         self.bg_color = "#ffffff"
         self.text_color = "#333333"
         self.primary_color = "#7e57c2"
         self.header_color = "#7e57c2"
         self.button_color = "#7e57c2"
         self.error_underline = "#ff4444"
+        
         self.model = None
         self.initialize_gemini()
+        
         self.logo_img = None
         try:
             img = Image.open("lexifix_logo.png")
@@ -36,6 +41,7 @@ class LexiFixSpellChecker:
             self.logo_img = ImageTk.PhotoImage(img)
         except Exception as e:
             print(f"Could not load logo image: {e}")
+        
         self.setup_ui()
 
     def initialize_gemini(self):
@@ -44,6 +50,7 @@ class LexiFixSpellChecker:
             if not api_key:
                 messagebox.showwarning("API Key Missing", "Please set GEMINI_API_KEY in .env file")
                 return
+            
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel(model_name="gemini-1.5-flash")
         except Exception as e:
@@ -52,22 +59,31 @@ class LexiFixSpellChecker:
     def setup_ui(self):
         main_frame = Frame(self.root, bg=self.header_color)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
         header = Frame(main_frame, bg=self.header_color, pady=15)
         header.pack(fill=tk.X)
+        
         title_container = Frame(header, bg=self.header_color)
         title_container.pack(expand=True)
+        
         if self.logo_img:
             logo_label = Label(title_container, image=self.logo_img, bg=self.header_color)
             logo_label.pack(side=tk.LEFT, padx=(0, 10))
+        
         title_frame = Frame(title_container, bg=self.header_color)
         title_frame.pack(side=tk.LEFT)
+        
         Label(title_frame, text="LexiFix", font=("Segoe UI", 24, "bold"), bg=self.header_color, fg="white").pack(anchor='w')
         Label(title_frame, text="AI Spell and Grammar Checker", font=("Segoe UI", 12), bg=self.header_color, fg="white").pack(anchor='w')
+        
         content_frame = Frame(main_frame, bg="white")
         content_frame.pack(fill=tk.BOTH, expand=True)
+        
         input_frame = Frame(content_frame, bg="white", padx=15, pady=15)
         input_frame.pack(fill=tk.BOTH, expand=True)
+        
         Label(input_frame, text="Original Text:", font=("Segoe UI", 10, "bold"), bg="white", fg="#333333").pack(anchor="w")
+        
         self.input_text = scrolledtext.ScrolledText(
             input_frame,
             wrap=tk.WORD,
@@ -84,8 +100,10 @@ class LexiFixSpellChecker:
         )
         self.input_text.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
         self.input_text.tag_config("error", underline=True, underlinefg=self.error_underline)
+        
         btn_frame = Frame(input_frame, bg="white")
         btn_frame.pack(fill=tk.X, pady=(10, 0))
+        
         self.check_btn = Button(btn_frame,
                               text="Check & Correct Text",
                               command=self.check_spelling,
@@ -97,11 +115,15 @@ class LexiFixSpellChecker:
                               pady=8,
                               relief=tk.FLAT)
         self.check_btn.pack(side=tk.RIGHT)
+        
         separator = Frame(content_frame, bg=self.header_color, height=10)
         separator.pack(fill=tk.X)
+        
         output_frame = Frame(content_frame, bg="white", padx=15, pady=15)
         output_frame.pack(fill=tk.BOTH, expand=True)
+        
         Label(output_frame, text="Corrected Text:", font=("Segoe UI", 10, "bold"), bg="white", fg="#333333").pack(anchor="w")
+        
         self.output_text = scrolledtext.ScrolledText(
             output_frame,
             wrap=tk.WORD,
@@ -123,48 +145,64 @@ class LexiFixSpellChecker:
         if not self.model:
             messagebox.showwarning("Offline", "Spell check unavailable - API not connected")
             return
+            
         text = self.input_text.get("1.0", tk.END).strip()
         if not text:
             messagebox.showinfo("Empty", "Please enter some text to check")
             return
+        
         self.check_btn.config(text="Processing...", state=tk.DISABLED)
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert(tk.END, "Processing your text...")
         self.output_text.config(state=tk.DISABLED)
         self.root.update()
+        
         threading.Thread(target=self.process_text, args=(text,), daemon=True).start()
 
     def process_text(self, text):
         try:
-            prompt = f"""Correct all spelling and grammar errors in this text while preserving its meaning and style. 
-            Return only the corrected text without any additional explanations or formatting:
+            response = self.model.generate_content([
+                "You are a precise text differencing tool. For the following text, list all changed words",
+                "in format 'original->corrected', one per line. Only return the changes, nothing else:",
+                f"Original: {text}",
+                "Corrected: " + self.model.generate_content([
+                    "Correct all errors in this text while preserving meaning and style:",
+                    text
+                ]).text
+            ])
             
-            {text}"""
-            response = self.model.generate_content(prompt)
-            corrected_text = response.text
-            self.highlight_errors(text, corrected_text)
+            changes = [line.split("->") for line in response.text.split("\n") if "->" in line]
+            corrected_text = self.model.generate_content([
+                "Correct all errors in this text while preserving meaning and style:",
+                text
+            ]).text
+            
+            self.root.after(0, self.highlight_changes, text, changes)
             self.root.after(0, self.display_results, corrected_text)
+            
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", f"Check failed: {str(e)}"))
         finally:
             self.root.after(0, lambda: self.check_btn.config(text="Check & Correct Text", state=tk.NORMAL))
 
-    def highlight_errors(self, original_text, corrected_text):
+    def highlight_changes(self, original_text, changes):
         self.input_text.tag_remove("error", "1.0", tk.END)
-        original_words = original_text.split()
-        corrected_words = corrected_text.split()
+        
         search_pos = "1.0"
-        for orig_word, corr_word in zip(original_words, corrected_words):
-            if orig_word != corr_word:
-                start_pos = self.input_text.search(r"\y" + re.escape(orig_word) + r"\y", search_pos, stopindex=tk.END, regexp=True)
-                if start_pos:
-                    end_pos = f"{start_pos}+{len(orig_word)}c"
-                    self.input_text.tag_add("error", start_pos, end_pos)
-                    search_pos = end_pos
-            next_space = self.input_text.search(" ", search_pos, stopindex=tk.END)
-            if next_space:
-                search_pos = f"{next_space}+1c"
+        for original_word, corrected_word in changes:
+            while True:
+                start_pos = self.input_text.search(
+                    r"\m" + re.escape(original_word) + r"\M", 
+                    search_pos, 
+                    stopindex=tk.END,
+                    regexp=True
+                )
+                if not start_pos:
+                    break
+                end_pos = f"{start_pos}+{len(original_word)}c"
+                self.input_text.tag_add("error", start_pos, end_pos)
+                search_pos = end_pos
 
     def display_results(self, corrected_text):
         self.output_text.config(state=tk.NORMAL)
