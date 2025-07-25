@@ -3,6 +3,10 @@
 A **desktop-based proofreading tool** built with **Python, Tkinter, and Google Gemini API**. It allows users to **check and correct spelling & grammar**, highlights errors, and provides AI-generated corrections while preserving the original meaning and tone.  
 
 ---
+## Preview
+![LexiFix Preview](image/LexiFix-GUI.png)  
+
+---
 
 ## Overview  
 
